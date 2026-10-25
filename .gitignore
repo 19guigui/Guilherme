@@ -1,0 +1,4 @@
+tools/debug/
+assets/.person_mask.png
+__pycache__/
+.DS_Store

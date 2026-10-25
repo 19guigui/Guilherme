@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis — personagem integrado</title>
+<style>
+  :root { color-scheme: dark; --bg:#0f1218; --panel:#171c26; --line:#28303f; --txt:#e8ebf2; --mut:#98a2b6; --acc:#4f8cff; --ok:#2fbf71; --warn:#f5a524; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--txt); min-height:100vh; }
+  .app { display:grid; grid-template-columns: minmax(220px, 34%) 1fr; min-height:100vh; }
+  .side { padding:24px 16px; border-right:1px solid var(--line); background:radial-gradient(120% 80% at 50% 100%, #1b2233 0%, var(--bg) 70%); display:flex; flex-direction:column; align-items:center; gap:12px; }
+  .side jarvis-character { width:min(100%, 420px); filter: drop-shadow(0 18px 24px rgba(0,0,0,.45)); }
+  .status { font-size:13px; color:var(--mut); }
+  .status b { color:var(--txt); }
+  .chat { display:flex; flex-direction:column; height:100vh; }
+  .msgs { flex:1; overflow:auto; padding:24px; display:flex; flex-direction:column; gap:10px; }
+  .msg { max-width:70ch; padding:10px 14px; border-radius:14px; background:var(--panel); border:1px solid var(--line); }
+  .msg.user { align-self:flex-end; background:#22304a; border-color:#2d3f60; }
+  .msg.sys { align-self:center; color:var(--mut); font-size:13px; background:transparent; border:0; }
+  .approval { border-color:var(--warn); }
+  .approval .actions { margin-top:8px; display:flex; gap:8px; }
+  form { display:flex; gap:8px; padding:16px 24px; border-top:1px solid var(--line); }
+  input { flex:1; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:#0c0f15; color:var(--txt); font:inherit; }
+  button { padding:9px 14px; border-radius:10px; border:1px solid var(--line); background:#242c3b; color:var(--txt); font:inherit; cursor:pointer; }
+  button.primary { background:var(--acc); border-color:var(--acc); color:#fff; }
+  button.ok { background:var(--ok); border-color:var(--ok); color:#06120b; }
+  .toolbar { display:flex; gap:8px; padding:10px 24px; border-bottom:1px solid var(--line); align-items:center; font-size:13px; color:var(--mut); flex-wrap:wrap; }
+  .toolbar a { color:var(--acc); }
+  @media (max-width: 760px) {
+    .app { grid-template-columns:1fr; }
+    .side { border-right:0; border-bottom:1px solid var(--line); padding:12px; }
+    .side jarvis-character { width:min(100%, 220px); }
+    .chat { height:auto; min-height:60vh; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <jarvis-character id="jarvis" src="./assets/" state="idle" framing="bust"></jarvis-character>
+    <div class="status">Jarvis está <b id="status">aguardando</b></div>
+  </aside>
+  <main class="chat">
+    <div class="toolbar">
+      <span>Exemplo de integração: o personagem reage aos eventos da aplicação.</span>
+      <button id="btnApproval">Simular pedido de aprovação</button>
+      <button id="btnFraming">Enquadramento: busto</button>
+      <a href="./dev/index.html">Interface de desenvolvimento →</a>
+    </div>
+    <div class="msgs" id="msgs">
+      <div class="msg sys">Envie uma mensagem: Jarvis pensa, responde falando e volta a aguardar.</div>
+    </div>
+    <form id="form" autocomplete="off">
+      <input id="input" placeholder="Pergunte algo ao Jarvis…" aria-label="Mensagem">
+      <button class="primary" type="submit">Enviar</button>
+    </form>
+  </main>
+</div>
+<script type="module">
+  import './src/jarvis-character.js';
+  const $ = (s) => document.querySelector(s);
+  const jarvis = $('#jarvis'), msgs = $('#msgs');
+  const LABEL = { idle: 'aguardando', thinking: 'pensando', talking: 'falando', approval_request: 'aguardando sua aprovação', confirmed: 'confirmado' };
+  jarvis.addEventListener('jarvis-statechange', (e) => { $('#status').textContent = LABEL[e.detail.to] || e.detail.to; });
+
+  const add = (text, cls = '') => { const d = document.createElement('div'); d.className = 'msg ' + cls; d.innerHTML = text; msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight; return d; };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // ---- fluxo "pergunta -> pensa -> responde": eventos reais da aplicação acionam o personagem
+  $('#form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = $('#input').value.trim(); if (!text) return;
+    $('#input').value = '';
+    add(text, 'user');
+    jarvis.setState('thinking');                       // 1) a aplicação começou a processar
+    await sleep(900 + Math.min(2000, text.length * 25)); // (simula a latência do backend)
+    const reply = `Entendido: "${text}". ` + 'Aqui vai minha resposta, com o tom executivo de sempre.';
+    const ms = 1200 + reply.length * 45;              // duração proporcional ao texto (ou use setMouthLevel com áudio)
+    jarvis.say(ms);                                    // 2) resposta chegando -> talking (volta sozinho ao idle)
+    add(reply);
+  });
+
+  // ---- fluxo de aprovação: approval_request até o usuário decidir; confirmed faz o aceno e volta ao idle
+  $('#btnApproval').addEventListener('click', () => {
+    const card = add('<b>Jarvis pede aprovação:</b> enviar o relatório mensal para a diretoria?<div class="actions"></div>', 'approval');
+    const ok = document.createElement('button'); ok.textContent = 'Aprovar'; ok.className = 'ok';
+    const no = document.createElement('button'); no.textContent = 'Recusar';
+    card.querySelector('.actions').append(ok, no);
+    jarvis.requestApproval();
+    ok.onclick = () => { card.querySelector('.actions').remove(); add('Aprovado. Enviando…', 'sys'); jarvis.confirm(); };
+    no.onclick = () => { card.querySelector('.actions').remove(); add('Recusado.', 'sys'); jarvis.setState('idle'); };
+  });
+
+  // ---- alternância de enquadramento (full / bust / face)
+  const framings = ['bust', 'full', 'face']; let fi = 0;
+  $('#btnFraming').addEventListener('click', (e) => { fi = (fi + 1) % framings.length; jarvis.setAttribute('framing', framings[fi]); e.target.textContent = 'Enquadramento: ' + { bust: 'busto', full: 'corpo inteiro', face: 'rosto' }[framings[fi]]; });
+
+  // ---- também responde a eventos globais, para módulos que não têm referência ao elemento:
+  // window.dispatchEvent(new CustomEvent('jarvis:state', { detail: { state: 'thinking' } }));
+</script>
+</body>
+</html>

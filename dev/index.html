@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis — Dev UI do personagem</title>
+<style>
+  :root { color-scheme: dark; --bg:#12151c; --panel:#1b2030; --line:#2a3042; --txt:#e6e9f0; --mut:#9aa3b5; --acc:#4f8cff; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--txt); }
+  header { display:flex; align-items:center; gap:12px; padding:10px 16px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0; font-weight:600; }
+  header .fps { color:var(--mut); font-variant-numeric:tabular-nums; margin-left:auto; }
+  main { display:grid; grid-template-columns: 1fr 340px; gap:0; min-height:calc(100vh - 45px); }
+  .stage { display:flex; align-items:center; justify-content:center; padding:16px; background:
+    repeating-conic-gradient(#171b25 0 25%, #141822 0 50%) 0 0/24px 24px; }
+  .stage.light { background: repeating-conic-gradient(#e8e8e8 0 25%, #f6f6f6 0 50%) 0 0/24px 24px; }
+  .frame { position:relative; outline:1px dashed #3a4258; border-radius:8px; overflow:hidden; }
+  .frame.round { aspect-ratio:1/1; } .frame.round jarvis-character { height:100%; }
+  .frame.round { border-radius:50%; }
+  .frame .overlay-btn { position:absolute; right:8px; top:8px; z-index:2; font-size:12px; }
+  aside { border-left:1px solid var(--line); background:var(--panel); padding:14px; overflow:auto; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--mut); margin:14px 0 8px; }
+  h2:first-child { margin-top:0; }
+  .row { display:flex; flex-wrap:wrap; gap:6px; }
+  button { background:#262c3d; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:6px 10px; cursor:pointer; font:inherit; }
+  button:hover { border-color:#4a5470; }
+  button.active { background:var(--acc); border-color:var(--acc); color:#fff; }
+  label.sl { display:grid; grid-template-columns: 86px 1fr 44px; align-items:center; gap:8px; margin:4px 0; font-size:12px; }
+  label.sl output { text-align:right; color:var(--mut); font-variant-numeric:tabular-nums; }
+  input[type=range] { width:100%; }
+  .chk { display:flex; flex-wrap:wrap; gap:4px 12px; font-size:12px; }
+  .chk label { display:flex; gap:4px; align-items:center; }
+  .log { font:11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color:var(--mut); max-height:140px; overflow:auto; background:#141825; padding:8px; border-radius:6px; }
+  .note { font-size:12px; color:var(--mut); }
+  @media (max-width: 860px) { main { grid-template-columns:1fr; } aside { border-left:0; border-top:1px solid var(--line); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Jarvis · personagem 2.5D — interface de desenvolvimento</h1>
+  <span class="note">estado: <b id="curState">idle</b></span>
+  <span class="fps" id="fps">— fps</span>
+</header>
+<main>
+  <section class="stage" id="stage">
+    <div class="frame" id="frame" style="width:420px;height:630px">
+      <jarvis-character id="jarvis" src="../assets/" state="idle"></jarvis-character>
+      <button class="overlay-btn" id="overlayBtn" title="Verifica que a animação não bloqueia cliques">Botão por cima (clique-me)</button>
+    </div>
+  </section>
+  <aside>
+    <h2>Estados</h2>
+    <div class="row" id="states"></div>
+    <div class="row" style="margin-top:6px">
+      <button id="btnSay">say(3000)</button>
+      <button id="btnBlink">blink()</button>
+      <button id="btnCycle">Ciclar todos os estados</button>
+    </div>
+
+    <h2>Tamanho do contêiner / enquadramento</h2>
+    <div class="row">
+      <button data-size="96">96px</button><button data-size="200">200px</button>
+      <button data-size="320">320px</button><button data-size="420" class="active">420px</button>
+      <button data-size="fill">preencher</button><button id="btnRound">circular</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <button data-framing="full" class="active">full</button><button data-framing="bust">bust</button><button data-framing="face">face</button>
+      <button id="btnBg">fundo: nenhum</button><button id="btnLight">palco claro</button>
+    </div>
+
+    <h2>Acessibilidade / desempenho</h2>
+    <div class="row">
+      <button id="btnReduced">reduced-motion: auto</button>
+      <button id="btnPause">pausar</button>
+    </div>
+
+    <h2>Controle manual do rig (override)</h2>
+    <div class="chk"><label><input type="checkbox" id="ovr"> ativar overrides</label>
+      <button id="btnResetOvr" style="padding:2px 8px">zerar</button></div>
+    <div id="sliders"></div>
+
+    <h2>Camadas</h2>
+    <div class="chk" id="layers"></div>
+
+    <h2>Eventos</h2>
+    <div class="log" id="log"></div>
+    <p class="note">Também responde a <code>window.dispatchEvent(new CustomEvent('jarvis:state', {detail:{state:'thinking'}}))</code>.</p>
+  </aside>
+</main>
+<script type="module">
+  import { JarvisCharacter } from '../src/jarvis-character.js';
+  const $ = (s) => document.querySelector(s);
+  const j = $('#jarvis'), log = $('#log');
+  const say = (m) => { log.textContent = `${new Date().toLocaleTimeString()}  ${m}\n` + log.textContent; };
+
+  // estados
+  const stBox = $('#states');
+  for (const s of JarvisCharacter.STATES) {
+    const b = document.createElement('button'); b.textContent = s; b.dataset.state = s;
+    b.onclick = () => j.setState(s); stBox.appendChild(b);
+  }
+  const syncState = () => {
+    $('#curState').textContent = j.state;
+    stBox.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.state === j.state));
+  };
+  j.addEventListener('jarvis-statechange', (e) => { say(`statechange ${e.detail.from} → ${e.detail.to}`); syncState(); });
+  j.addEventListener('jarvis-ready', () => { say('ready (' + j.layers.length + ' camadas)'); buildLayers(); });
+  j.addEventListener('jarvis-error', (e) => say('ERRO: ' + e.detail));
+  $('#btnSay').onclick = () => j.say(3000);
+  $('#btnBlink').onclick = () => j.blink();
+  $('#btnCycle').onclick = async () => {
+    for (const s of ['idle', 'thinking', 'talking', 'approval_request', 'confirmed']) {
+      j.setState(s); await new Promise((r) => setTimeout(r, s === 'confirmed' ? 1800 : 2500));
+    }
+  };
+  $('#overlayBtn').onclick = () => say('clique recebido pelo botão sobreposto ✔');
+
+  // tamanho / enquadramento
+  const frame = $('#frame');
+  document.querySelectorAll('[data-size]').forEach((b) => b.onclick = () => {
+    document.querySelectorAll('[data-size]').forEach((x) => x.classList.toggle('active', x === b));
+    const v = b.dataset.size;
+    if (v === 'fill') { frame.style.width = 'min(100%, 60vh)'; frame.style.height = 'auto'; }
+    else { frame.style.width = v + 'px'; frame.style.height = 'auto'; }
+  });
+  document.querySelectorAll('[data-framing]').forEach((b) => b.onclick = () => {
+    document.querySelectorAll('[data-framing]').forEach((x) => x.classList.toggle('active', x === b));
+    j.setAttribute('framing', b.dataset.framing);
+  });
+  $('#btnRound').onclick = (e) => { frame.classList.toggle('round'); e.target.classList.toggle('active'); };
+  $('#btnBg').onclick = (e) => { const none = (j.getAttribute('background') || 'none') === 'none'; j.setAttribute('background', none ? 'white' : 'none'); e.target.textContent = 'fundo: ' + (none ? 'branco' : 'nenhum'); };
+  $('#btnLight').onclick = (e) => { $('#stage').classList.toggle('light'); e.target.classList.toggle('active'); };
+
+  // acessibilidade
+  const rmVals = ['auto', 'true', 'false']; let rm = 0;
+  $('#btnReduced').onclick = (e) => { rm = (rm + 1) % 3; j.setAttribute('reduced-motion', rmVals[rm]); e.target.textContent = 'reduced-motion: ' + rmVals[rm]; };
+  $('#btnPause').onclick = (e) => { const p = j.getAttribute('paused') === 'true'; j.setAttribute('paused', p ? 'false' : 'true'); e.target.textContent = p ? 'pausar' : 'retomar'; };
+
+  // overrides
+  const defs = [['headX', -12, 12, 0], ['headY', -12, 12, 0], ['headRot', -8, 8, 0], ['headScale', 0.96, 1.04, 1],
+    ['browLY', -6, 6, 0], ['browRY', -6, 6, 0], ['browLRot', -5, 5, 0], ['browRRot', -5, 5, 0],
+    ['gazeX', -6, 6, 0], ['gazeY', -6, 6, 0], ['blink', 0, 1, 0], ['lidDroop', 0, 1, 0], ['mouthOpen', 0, 1, 0],
+    ['breath', 0, 1, 0], ['armRShoulder', -5, 20, 0], ['armRElbow', -25, 60, 0], ['armLShoulder', -5, 20, 0], ['armLElbow', -25, 60, 0], ['swayX', -12, 12, 0], ['swayRot', -2, 2, 0]];
+  const sl = $('#sliders'), ovr = {};
+  for (const [k, min, max, d] of defs) {
+    ovr[k] = d;
+    const lab = document.createElement('label'); lab.className = 'sl';
+    lab.innerHTML = `<span>${k}</span><input type="range" min="${min}" max="${max}" step="${(max - min) / 200}" value="${d}"><output>${d}</output>`;
+    const inp = lab.querySelector('input'), out = lab.querySelector('output');
+    inp.oninput = () => { ovr[k] = +inp.value; out.value = (+inp.value).toFixed(2); apply(); };
+    sl.appendChild(lab);
+  }
+  const apply = () => j.setOverrides($('#ovr').checked ? ovr : null);
+  $('#ovr').onchange = apply;
+  $('#btnResetOvr').onclick = () => { for (const [k, , , d] of defs) ovr[k] = d; sl.querySelectorAll('input').forEach((i, n) => { i.value = defs[n][3]; i.nextElementSibling.value = defs[n][3]; }); apply(); };
+
+  // camadas
+  function buildLayers() {
+    const box = $('#layers'); box.innerHTML = '';
+    for (const name of j.layers) {
+      const l = document.createElement('label');
+      l.innerHTML = `<input type="checkbox" checked> ${name}`;
+      l.querySelector('input').onchange = (e) => j.setLayerVisible(name, e.target.checked);
+      box.appendChild(l);
+    }
+  }
+  setInterval(() => { $('#fps').textContent = j.fps.toFixed(0) + ' fps'; }, 500);
+  syncState();
+  window.jarvis = j; // acesso no console
+</script>
+</body>
+</html>
