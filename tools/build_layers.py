@@ -339,6 +339,7 @@ log('rosto ok')
 # esfumada do braço compõe sobre tecido reconstruído, e não sobre o fundo da página.
 arms_bin = cv2.bitwise_or(armR_bin, armL_bin)
 under_arms = cv2.bitwise_and(dilate(body_bin, 12), arms_bin)
+under_arms[780:960, 651:] = 0   # à direita da borda real da calça há fundo entre a mão e a perna (não tecido)
 torso_bin = cv2.bitwise_or(body_bin, under_arms)
 hidden = cv2.bitwise_or(under_arms, cv2.bitwise_and(dilate(arms_bin, 8), body_bin))  # inclui a franja de pele/manga
 torso_full = inpaint_region(img, hidden, body_bin, radius=5, scale=0.5)
